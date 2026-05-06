@@ -34,7 +34,7 @@ func extractCleanText(reader *zip.ReadCloser, spine []string) ([]string, error) 
 	for _, chapterPath := range spine {
 		for _, file := range reader.File {
 			if file.Name == chapterPath {
-				rc, err := file.Open() // Must open the file first
+				rc, err := file.Open()
 				if err != nil {
 					return nil, err
 				}
@@ -75,8 +75,6 @@ func extractCleanText(reader *zip.ReadCloser, spine []string) ([]string, error) 
 					}
 				}
 				rc.Close()
-				// Use strings.Fields to automatically strip all extra spaces and newlines
-				// Then join them back together with a single space.
 				words := strings.Fields(sb.String())
 				if len(words) > 0 {
 					cleanText := strings.Join(words, " ")
@@ -150,23 +148,23 @@ func getOPF(reader *zip.ReadCloser) (string, error) {
 func GetChapters(filename string) ([]string, error) {
 	reader, err := zip.OpenReader(filename)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open EPUB: %w", err)
+		return nil, err
 	}
 	defer reader.Close()
 
 	opf, err := getOPF(reader)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get OPF: %w", err)
+		return nil, err
 	}
 
 	spine, err := parseOPF(reader, opf)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse OPF: %w", err)
+		return nil, err
 	}
 
 	chapters, err := extractCleanText(reader, spine)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract text: %w", err)
+		return nil, err
 	}
 
 	return chapters, nil
