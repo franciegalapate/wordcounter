@@ -5,6 +5,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
+	"path"
 	"strings"
 
 	"golang.org/x/net/html"
@@ -27,14 +28,16 @@ type Pack struct {
 	} `xml:"spine>itemref"`
 }
 
-func extractCleanText(reader *zip.ReadCloser, spine []string) []string {
+func extractCleanText(reader *zip.ReadCloser, spine []string) ([]string, error) {
 	var chapters []string
 	
 	for _, chapterPath := range spine {
 		for _, file := range reader.File {
 			if file.Name == chapterPath {
-				rc, _ := file.Open() // Must open the file first
-				defer rc.Close()
+				rc, err := file.Open() // Must open the file first
+				if err != nil {
+					return nil, err
+				}
 
 				tokenizer := html.NewTokenizer(rc)
 				var sb strings.Builder
@@ -47,8 +50,8 @@ func extractCleanText(reader *zip.ReadCloser, spine []string) []string {
 						if tokenizer.Err() == io.EOF {
 							break // End of chapter
 						}
-						fmt.Print(tokenizer.Err())
-						break
+						rc.Close()
+						return nil, tokenizer.Err()
 					}
 
 					token := tokenizer.Token()
@@ -71,6 +74,7 @@ func extractCleanText(reader *zip.ReadCloser, spine []string) []string {
 						}
 					}
 				}
+				rc.Close()
 				// Use strings.Fields to automatically strip all extra spaces and newlines
 				// Then join them back together with a single space.
 				words := strings.Fields(sb.String())
@@ -81,17 +85,16 @@ func extractCleanText(reader *zip.ReadCloser, spine []string) []string {
 			}
 		}
 	}
-	return chapters
+	return chapters, nil
 }
 
 
-func parseOPF(reader *zip.ReadCloser, filename string) []string {
+func parseOPF(reader *zip.ReadCloser, filename string) ([]string, error) {
 	for _, file := range reader.File {
 		if file.Name == filename {
 			rc, err := file.Open()
 			if err != nil {
-				fmt.Print(err)
-				return nil
+				return nil, err
 			}
 			defer rc.Close()
 
@@ -99,8 +102,7 @@ func parseOPF(reader *zip.ReadCloser, filename string) []string {
 			decoder := xml.NewDecoder(rc)
 			err = decoder.Decode(&pack)
 			if err != nil {
-				fmt.Print(err)
-				return nil
+				return nil, err
 			}
 
 			manifest := make(map[string]string)
@@ -109,22 +111,26 @@ func parseOPF(reader *zip.ReadCloser, filename string) []string {
 				manifest[item.ID] = item.HRef
 			}
 
+			baseDir := path.Dir(filename)
 			for _, item := range pack.ItemRefs {
-				spine = append(spine, manifest[item.IDRef])
+				href := manifest[item.IDRef]
+				if baseDir != "." && baseDir != "" {
+					href = path.Join(baseDir, href)
+				}
+				spine = append(spine, href)
 			}
-			return spine
+			return spine, nil
 		}
 	}
-	return nil
+	return nil, fmt.Errorf("OPF file %s not found", filename)
 }
 
-func getOPF(reader *zip.ReadCloser) string {
+func getOPF(reader *zip.ReadCloser) (string, error) {
 	for _, file := range reader.File {
 		if file.Name == "META-INF/container.xml" {
 			rc, err := file.Open()
 			if err != nil {
-				fmt.Print(err)
-				return ""
+				return "", err
 			}
 			defer rc.Close()
 
@@ -132,29 +138,37 @@ func getOPF(reader *zip.ReadCloser) string {
 			decoder := xml.NewDecoder(rc)
 			err = decoder.Decode(&container)
 			if err != nil {
-				fmt.Print(err)
-				return ""
+				return "", err
 			}
 			opfFile := container.RootFiles[0].FullPath
-			return opfFile
+			return opfFile, nil
 		}
 	}
-	fmt.Println("META-INF/container.xml not found")
-	return ""
+	return "", fmt.Errorf("META-INF/container.xml not found")
 }
 
-func GetChapters() {
-	filename := "../data/Around the World in 28 Languages.epub"
+func GetChapters(filename string) ([]string, error) {
 	reader, err := zip.OpenReader(filename)
 	if err != nil {
-		fmt.Print(err)
-		return
+		return nil, fmt.Errorf("failed to open EPUB: %w", err)
 	}
 	defer reader.Close()
 
-	opf := getOPF(reader)
-	spine := parseOPF(reader, opf)
-	chapters := extractCleanText(reader, spine)
-	fmt.Print(chapters[1])
+	opf, err := getOPF(reader)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get OPF: %w", err)
+	}
+
+	spine, err := parseOPF(reader, opf)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse OPF: %w", err)
+	}
+
+	chapters, err := extractCleanText(reader, spine)
+	if err != nil {
+		return nil, fmt.Errorf("failed to extract text: %w", err)
+	}
+
+	return chapters, nil
 }
 
