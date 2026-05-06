@@ -9,6 +9,11 @@ import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 import java.io.File;
 import java.util.List;
+import java.util.ArrayList;
+import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 public class MainUI extends VBox {
 
@@ -60,17 +65,33 @@ public class MainUI extends VBox {
         try {
             EpubParser parser = new EpubParser();
             String cleanText = parser.extractText(file.getAbsolutePath());
-
             List<String> chunks = parser.splitText(cleanText, 3);
+
+            int threadCount = chunks.size();
+            ExecutorService executor = Executors.newFixedThreadPool(threadCount);
+
+            List<Future<Map<String, Integer>>> futures = new ArrayList<>();
+            for (String chunk : chunks) {
+                WordCountTask task = new WordCountTask(chunk);
+                Future<Map<String, Integer>> future = executor.submit(task);
+                futures.add(future);
+            }
+
+            executor.shutdown();
 
             System.out.println("--- PARSER REPORT ---");
             System.out.println("Total words extracted (approx): " + cleanText.split("\\s+").length);
             for (int i = 0; i < chunks.size(); i++) {
-                System.out.println("Chunk " + (i+1) + " length: " + chunks.get(i).length());
+                System.out.println("Chunk " + (i + 1) + " length: " + chunks.get(i).length());
             }
+
+            System.out.println("--- DISPATCH REPORT ---");
+            System.out.println("Tasks submitted: " + futures.size());
+            System.out.println("Futures ready for Member 3's aggregator.");
 
         } catch (Exception e) {
             System.err.println("Error: " + e.getMessage());
+            e.printStackTrace();
         }
     }
 }
