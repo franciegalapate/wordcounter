@@ -1,4 +1,4 @@
-package main
+package epub
 
 import (
 	"archive/zip"
@@ -132,11 +132,4 @@ func GetChapters(filename string) []string {
 	chapters := extractCleanText(reader, spine)
 
 	return chapters
-}
-
-func main() {
-	chapters := GetChapters("../data/Around the World in 28 Languages.epub")
-	for i, chap := range chapters {
-		fmt.Printf("Chapter %d: %d words\n", i+1, len(strings.Fields(chap)))
-	}
 }
