@@ -2,38 +2,31 @@ package gui
 
 import (
 	"fmt"
-	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/widget"
+
+	"go-app/counter"
+	"go-app/epub"
 )
 
-// SetupUI builds and returns the main layout for the application
 func SetupUI(win fyne.Window) fyne.CanvasObject {
-	// Display file selection status
 	statusLabel := widget.NewLabel("Status: No file selected")
-	
-	// Show word count results in GUI
 	resultLabel := widget.NewLabel("Word Count: N/A")
 
-	// Add progress indicator during processing
 	progressBar := widget.NewProgressBar()
 	progressBar.SetValue(0)
-	progressBar.Hide() // Hidden until processing starts
+	progressBar.Hide()
 
-	// Pre-declare filePicker so it can be called inside the button logic
 	var filePicker dialog.Dialog
 
-	// Create main window with file picker button
 	openBtn := widget.NewButton("Select File to Count", func() {
 		filePicker.Show()
 	})
 
-	// Initialize the file picker dialog
 	filePicker = dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
-		// Handle user interactions (errors and cancellations)
 		if err != nil {
 			dialog.ShowError(err, win)
 			return
@@ -43,17 +36,18 @@ func SetupUI(win fyne.Window) fyne.CanvasObject {
 			return
 		}
 		
-		defer reader.Close()
-
+		filePath := reader.URI().Path()
 		filename := reader.URI().Name()
+		
+		// Close reader since epub.GetChapters will open it again by path
+		reader.Close()
+
 		statusLabel.SetText(fmt.Sprintf("Status: Selected '%s'", filename))
 
-		// Launch processing in a separate goroutine to keep the GUI responsive
-		go processFileSimulation(filename, progressBar, resultLabel, openBtn)
+		go processFile(filePath, filename, progressBar, resultLabel, openBtn)
 
 	}, win)
 
-	// Combine all elements into a Vertical Box layout
 	content := container.NewVBox(
 		widget.NewLabelWithStyle("Parallel Programming Demo", fyne.TextAlignCenter, fyne.TextStyle{Bold: true}),
 		statusLabel,
@@ -65,25 +59,27 @@ func SetupUI(win fyne.Window) fyne.CanvasObject {
 	return content
 }
 
-// processFileSimulation mimics the parallel backend processing
-func processFileSimulation(filename string, progress *widget.ProgressBar, result *widget.Label, btn *widget.Button) {
-	// Prepare UI for processing
-	btn.Disable()       // Prevent opening multiple files at once
-	progress.Show()     // Reveal progress bar
-	progress.SetValue(0)
-	result.SetText("Processing in parallel...")
+func processFile(filePath string, filename string, progress *widget.ProgressBar, result *widget.Label, btn *widget.Button) {
+	btn.Disable()
+	progress.Show()
+	
+	progress.SetValue(0.1)
+	result.SetText("Extracting chapters...")
 
-	// Simulate parallel processing time (e.g., chunking the file and counting)
-	for i := 0.0; i <= 1.0; i += 0.1 {
-		time.Sleep(150 * time.Millisecond) // Mock processing delay
-		progress.SetValue(i)               // Update progress bar safely
-	}
+	chapters := epub.GetChapters(filePath)
+	
+	progress.SetValue(0.5)
+	result.SetText("Counting words in parallel...")
 
-	// Mock result - this is where to call the actual parallel word counter
-	mockWordCount := 142058 
+	// 4 workers for parallel counting
+	wordCountResult := counter.ParallelWordCount(chapters, 4)
 
-	// Reset UI after processing
+	progress.SetValue(1.0)
 	progress.Hide()
-	result.SetText(fmt.Sprintf("Word Count: %d words found in %s", mockWordCount, filename))
+	
+	resultText := fmt.Sprintf("Word Count: %d total words, %d unique words found in %s\nProcessing Time: %v", 
+		wordCountResult.TotalWords, wordCountResult.UniqueWords, filename, wordCountResult.ProcessingTime)
+	result.SetText(resultText)
+	
 	btn.Enable()
 }
