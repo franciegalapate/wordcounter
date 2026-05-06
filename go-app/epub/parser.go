@@ -1,14 +1,12 @@
-package epub
+package main
 
 import (
 	"archive/zip"
 	"encoding/xml"
 	"fmt"
-	"io"
-	"path"
 	"strings"
-
 	"golang.org/x/net/html"
+	"path"
 )
 
 type Container struct {
@@ -22,22 +20,19 @@ type Pack struct {
 		HRef string `xml:"href,attr"`
 		ID string `xml:"id,attr"`
 	} `xml:"manifest>item"`
-	
+
 	ItemRefs []struct {
 		IDRef string `xml:"idref,attr"`
 	} `xml:"spine>itemref"`
 }
 
-func extractCleanText(reader *zip.ReadCloser, spine []string) ([]string, error) {
+func extractCleanText(reader *zip.ReadCloser, spine []string) []string {
 	var chapters []string
-	
+
 	for _, chapterPath := range spine {
 		for _, file := range reader.File {
 			if file.Name == chapterPath {
-				rc, err := file.Open()
-				if err != nil {
-					return nil, err
-				}
+				rc, _ := file.Open()
 
 				tokenizer := html.NewTokenizer(rc)
 				var sb strings.Builder
@@ -47,11 +42,7 @@ func extractCleanText(reader *zip.ReadCloser, spine []string) ([]string, error) 
 					tokenType := tokenizer.Next()
 
 					if tokenType == html.ErrorToken {
-						if tokenizer.Err() == io.EOF {
-							break // End of chapter
-						}
-						rc.Close()
-						return nil, tokenizer.Err()
+						break // End of chapter
 					}
 
 					token := tokenizer.Token()
@@ -66,7 +57,7 @@ func extractCleanText(reader *zip.ReadCloser, spine []string) ([]string, error) 
 						if token.Data == "script" || token.Data == "style" {
 							skip = false
 						}
-						sb.WriteString(" ") 
+						sb.WriteString(" ")
 
 					case html.TextToken:
 						if !skip {
@@ -83,25 +74,18 @@ func extractCleanText(reader *zip.ReadCloser, spine []string) ([]string, error) 
 			}
 		}
 	}
-	return chapters, nil
+	return chapters
 }
 
-
-func parseOPF(reader *zip.ReadCloser, filename string) ([]string, error) {
+func parseOPF(reader *zip.ReadCloser, filename string) []string {
 	for _, file := range reader.File {
 		if file.Name == filename {
-			rc, err := file.Open()
-			if err != nil {
-				return nil, err
-			}
+			rc, _ := file.Open()
 			defer rc.Close()
 
 			var pack Pack
 			decoder := xml.NewDecoder(rc)
-			err = decoder.Decode(&pack)
-			if err != nil {
-				return nil, err
-			}
+			_ = decoder.Decode(&pack)
 
 			manifest := make(map[string]string)
 			var spine []string
@@ -112,61 +96,47 @@ func parseOPF(reader *zip.ReadCloser, filename string) ([]string, error) {
 			baseDir := path.Dir(filename)
 			for _, item := range pack.ItemRefs {
 				href := manifest[item.IDRef]
-				if baseDir != "." && baseDir != "" {
-					href = path.Join(baseDir, href)
+				if baseDir != "." {
+					href = baseDir + "/" + href
 				}
 				spine = append(spine, href)
 			}
-			return spine, nil
+			return spine
 		}
 	}
-	return nil, fmt.Errorf("OPF file %s not found", filename)
+	return nil
 }
 
-func getOPF(reader *zip.ReadCloser) (string, error) {
+func getOPF(reader *zip.ReadCloser) string {
 	for _, file := range reader.File {
 		if file.Name == "META-INF/container.xml" {
-			rc, err := file.Open()
-			if err != nil {
-				return "", err
-			}
+			rc, _ := file.Open()
 			defer rc.Close()
 
 			var container Container
 			decoder := xml.NewDecoder(rc)
-			err = decoder.Decode(&container)
-			if err != nil {
-				return "", err
-			}
+			_ = decoder.Decode(&container)
 			opfFile := container.RootFiles[0].FullPath
-			return opfFile, nil
+			return opfFile
 		}
 	}
-	return "", fmt.Errorf("META-INF/container.xml not found")
+	return ""
 }
 
-func GetChapters(filename string) ([]string, error) {
-	reader, err := zip.OpenReader(filename)
-	if err != nil {
-		return nil, err
-	}
+func GetChapters(filename string) []string {
+	reader, _ := zip.OpenReader(filename)
 	defer reader.Close()
 
-	opf, err := getOPF(reader)
-	if err != nil {
-		return nil, err
-	}
+	opf := getOPF(reader)
+	spine := parseOPF(reader, opf)
+	chapters := extractCleanText(reader, spine)
 
-	spine, err := parseOPF(reader, opf)
-	if err != nil {
-		return nil, err
-	}
-
-	chapters, err := extractCleanText(reader, spine)
-	if err != nil {
-		return nil, err
-	}
-
-	return chapters, nil
+	return chapters
 }
 
+func main() {
+	chapters := GetChapters("../data/Around the World in 28 Languages.epub")
+	for i, chap := range chapters {
+		fmt.Printf("Chapter %d: %d words\n", i+1, len(strings.Fields(chap)))
+	}
+}
