@@ -8,6 +8,7 @@ import javafx.scene.layout.VBox;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 import java.io.File;
+import java.util.HashMap;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.Map;
@@ -70,6 +71,20 @@ public class MainUI extends VBox {
             int threadCount = chunks.size();
 
             long startTime = System.nanoTime();
+            Map<String, Integer> sequentialResults = new HashMap<>();
+            for (String chunk: chunks){
+                WordCountTask task = new WordCountTask(chunk);
+                Map<String, Integer> output = task.call();
+                output.forEach((key, value) -> {
+                    sequentialResults.merge(key, value, Integer::sum);
+                });
+            }
+            long endTime = System.nanoTime();
+            long sequentialDuration = (endTime - startTime);
+            int seqUniqueWords = sequentialResults.size();
+            int seqTotalWords = sequentialResults.values().stream().mapToInt(Integer::intValue).sum();
+
+
             ExecutorService executor = Executors.newFixedThreadPool(threadCount);
 
             List<Future<Map<String, Integer>>> futures = new ArrayList<>();
@@ -79,6 +94,7 @@ public class MainUI extends VBox {
                 futures.add(future);
             }
 
+            startTime = System.nanoTime();
             Map<String, Integer> results = new HashMap<>();
             for (Future<Map<String, Integer>> future: futures){
                 Map<String, Integer> output = future.get();
@@ -88,22 +104,11 @@ public class MainUI extends VBox {
             }
 
             executor.shutdown();
-            long endTime = System.nanoTime();
+            endTime = System.nanoTime();
             long parallelDuration = (endTime - startTime);
             int uniqueWords = results.size();
             int totalWords = results.values().stream().mapToInt(Integer::intValue).sum();
 
-            startTime = System.nanoTime();
-            results = new HashMap<>();
-            for (String chunk: chunks){
-                WordCountTask task = new WordCountTask(chunk);
-                Map<String, Integer> output = task.call();
-                output.forEach((key, value) -> {
-                    results.merge(key, value, Integer::sum);
-                });
-            }
-            endTime = System.nanoTime();
-            long sequentialDuration = (endTime - startTime);
 
 
 
@@ -115,9 +120,14 @@ public class MainUI extends VBox {
 
             System.out.println("--- DISPATCH REPORT ---");
             System.out.println("Tasks submitted: " + futures.size());
+            System.out.println("--- PARALLEL REPORT ---");
             System.out.println("Total Unique Words: " + uniqueWords);
             System.out.println("Total Number of Words: " + totalWords);
             System.out.println("Total Time Elapsed (milliseconds): " + parallelDuration);
+            System.out.println("--- SEQUENTIAL REPORT ---");
+            System.out.println("Total Unique Words: " + seqUniqueWords);
+            System.out.println("Total Number of Words: " + seqTotalWords);
+            System.out.println("Total Time Elapsed (milliseconds): " + sequentialDuration+"\n");
 
             
 
