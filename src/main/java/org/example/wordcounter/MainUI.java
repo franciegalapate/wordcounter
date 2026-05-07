@@ -68,6 +68,8 @@ public class MainUI extends VBox {
             List<String> chunks = parser.splitText(cleanText, 3);
 
             int threadCount = chunks.size();
+
+            long startTime = System.nanoTime();
             ExecutorService executor = Executors.newFixedThreadPool(threadCount);
 
             List<Future<Map<String, Integer>>> futures = new ArrayList<>();
@@ -77,7 +79,33 @@ public class MainUI extends VBox {
                 futures.add(future);
             }
 
+            Map<String, Integer> results = new HashMap<>();
+            for (Future<Map<String, Integer>> future: futures){
+                Map<String, Integer> output = future.get();
+                output.forEach((key, value) -> {
+                    results.merge(key, value, Integer::sum);
+                });
+            }
+
             executor.shutdown();
+            long endTime = System.nanoTime();
+            long parallelDuration = (endTime - startTime);
+            int uniqueWords = results.size();
+            int totalWords = results.values().stream().mapToInt(Integer::intValue).sum();
+
+            startTime = System.nanoTime();
+            results = new HashMap<>();
+            for (String chunk: chunks){
+                WordCountTask task = new WordCountTask(chunk);
+                Map<String, Integer> output = task.call();
+                output.forEach((key, value) -> {
+                    results.merge(key, value, Integer::sum);
+                });
+            }
+            endTime = System.nanoTime();
+            long sequentialDuration = (endTime - startTime);
+
+
 
             System.out.println("--- PARSER REPORT ---");
             System.out.println("Total words extracted (approx): " + cleanText.split("\\s+").length);
@@ -87,7 +115,11 @@ public class MainUI extends VBox {
 
             System.out.println("--- DISPATCH REPORT ---");
             System.out.println("Tasks submitted: " + futures.size());
-            System.out.println("Futures ready for Member 3's aggregator.");
+            System.out.println("Total Unique Words: " + uniqueWords);
+            System.out.println("Total Number of Words: " + totalWords);
+            System.out.println("Total Time Elapsed (milliseconds): " + parallelDuration);
+
+            
 
         } catch (Exception e) {
             System.err.println("Error: " + e.getMessage());
