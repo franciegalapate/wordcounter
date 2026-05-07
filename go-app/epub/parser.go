@@ -3,7 +3,6 @@ package epub
 import (
 	"archive/zip"
 	"encoding/xml"
-	"fmt"
 	"strings"
 	"golang.org/x/net/html"
 	"path"
