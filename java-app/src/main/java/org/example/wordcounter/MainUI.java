@@ -1,24 +1,24 @@
 package org.example.wordcounter;
 
+import javafx.application.Platform;
 import javafx.geometry.Pos;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
+import javafx.scene.control.TextArea;
 import javafx.scene.input.TransferMode;
 import javafx.scene.layout.VBox;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 import java.io.File;
-import java.util.HashMap;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
-import java.util.ArrayList;
-import java.util.Map;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 
 public class MainUI extends VBox {
 
     private final EpubParser parser = new EpubParser();
+    private final TextArea resultArea = new TextArea();
+    private final Label statusLabel = new Label("Ready");
 
     public MainUI(Stage stage) {
         this.setAlignment(Pos.CENTER);
@@ -36,7 +36,13 @@ public class MainUI extends VBox {
         Button browseButton = new Button("Browse Files");
         browseButton.setStyle("-fx-background-color: #4f46e5; -fx-text-fill: white;");
 
-        this.getChildren().addAll(instructionLabel, browseButton);
+        resultArea.setEditable(false);
+        resultArea.setPrefHeight(200);
+        resultArea.setWrapText(true);
+        resultArea.setStyle("-fx-font-family: 'Monospaced';");
+        statusLabel.setStyle("-fx-text-fill: #666666;");
+
+        this.getChildren().addAll(instructionLabel, browseButton, statusLabel, resultArea);
 
         this.setOnDragOver(event -> {
             if (event.getDragboard().hasFiles()) {
@@ -63,77 +69,43 @@ public class MainUI extends VBox {
     }
 
     private void processFile(File file) {
-        try {
-            EpubParser parser = new EpubParser();
-            String cleanText = parser.extractText(file.getAbsolutePath());
-            List<String> chunks = parser.splitText(cleanText, 3);
+        new Thread(() -> {
+            try {
+                long startTime = System.currentTimeMillis();
 
-            int threadCount = chunks.size();
+                Platform.runLater(() -> {
+                    statusLabel.setText("Processing: " + file.getName() + "...");
+                    resultArea.clear();
+                });
 
-            long startTime = System.nanoTime();
-            Map<String, Integer> sequentialResults = new HashMap<>();
-            for (String chunk: chunks){
-                WordCountTask task = new WordCountTask(chunk);
-                Map<String, Integer> output = task.call();
-                output.forEach((key, value) -> {
-                    sequentialResults.merge(key, value, Integer::sum);
+                String cleanText = parser.extractText(file.getAbsolutePath());
+                List<String> chunks = parser.splitText(cleanText, 3);
+
+                long endTime = System.currentTimeMillis();
+                double durationSeconds = (endTime - startTime) / 1000.0;
+                String finishedAt = ZonedDateTime.now().format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);
+
+                StringBuilder report = new StringBuilder();
+                report.append("--- PARSER REPORT ---\n");
+                report.append("Total words extracted (approx): ").append(cleanText.split("\\s+").length).append("\n");
+                for (int i = 0; i < chunks.size(); i++) {
+                    report.append("Chunk ").append(i+1).append(" length: ").append(chunks.get(i).length()).append("\n");
+                }
+
+                report.append("\nTotal time: ").append(String.format("%.3f", durationSeconds)).append(" s\n");
+                report.append("Finished at: ").append(finishedAt).append("\n");
+
+                Platform.runLater(() -> {
+                    resultArea.setText(report.toString());
+                    statusLabel.setText("Success!");
+                });
+
+            } catch (Exception e) {
+                Platform.runLater(() -> {
+                    statusLabel.setText("Error occurred.");
+                    resultArea.setText("Error: " + e.getMessage());
                 });
             }
-            long endTime = System.nanoTime();
-            long sequentialDuration = (endTime - startTime);
-            int seqUniqueWords = sequentialResults.size();
-            int seqTotalWords = sequentialResults.values().stream().mapToInt(Integer::intValue).sum();
-
-
-            ExecutorService executor = Executors.newFixedThreadPool(threadCount);
-
-            List<Future<Map<String, Integer>>> futures = new ArrayList<>();
-            for (String chunk : chunks) {
-                WordCountTask task = new WordCountTask(chunk);
-                Future<Map<String, Integer>> future = executor.submit(task);
-                futures.add(future);
-            }
-
-            startTime = System.nanoTime();
-            Map<String, Integer> results = new HashMap<>();
-            for (Future<Map<String, Integer>> future: futures){
-                Map<String, Integer> output = future.get();
-                output.forEach((key, value) -> {
-                    results.merge(key, value, Integer::sum);
-                });
-            }
-
-            executor.shutdown();
-            endTime = System.nanoTime();
-            long parallelDuration = (endTime - startTime);
-            int uniqueWords = results.size();
-            int totalWords = results.values().stream().mapToInt(Integer::intValue).sum();
-
-
-
-
-            System.out.println("--- PARSER REPORT ---");
-            System.out.println("Total words extracted (approx): " + cleanText.split("\\s+").length);
-            for (int i = 0; i < chunks.size(); i++) {
-                System.out.println("Chunk " + (i + 1) + " length: " + chunks.get(i).length());
-            }
-
-            System.out.println("--- DISPATCH REPORT ---");
-            System.out.println("Tasks submitted: " + futures.size());
-            System.out.println("--- PARALLEL REPORT ---");
-            System.out.println("Total Unique Words: " + uniqueWords);
-            System.out.println("Total Number of Words: " + totalWords);
-            System.out.println("Total Time Elapsed (milliseconds): " + parallelDuration);
-            System.out.println("--- SEQUENTIAL REPORT ---");
-            System.out.println("Total Unique Words: " + seqUniqueWords);
-            System.out.println("Total Number of Words: " + seqTotalWords);
-            System.out.println("Total Time Elapsed (milliseconds): " + sequentialDuration+"\n");
-
-            
-
-        } catch (Exception e) {
-            System.err.println("Error: " + e.getMessage());
-            e.printStackTrace();
-        }
+        }).start();
     }
 }
