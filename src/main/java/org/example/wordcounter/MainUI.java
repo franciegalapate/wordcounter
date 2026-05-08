@@ -1,8 +1,10 @@
 package org.example.wordcounter;
 
+import javafx.application.Platform;
 import javafx.geometry.Pos;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
+import javafx.scene.control.TextArea;
 import javafx.scene.input.TransferMode;
 import javafx.scene.layout.VBox;
 import javafx.stage.FileChooser;
@@ -18,7 +20,7 @@ import java.util.concurrent.Future;
 
 public class MainUI extends VBox {
 
-    private final EpubParser parser = new EpubParser();
+    private final TextArea reportArea = new TextArea();
 
     public MainUI(Stage stage) {
         this.setAlignment(Pos.CENTER);
@@ -36,7 +38,12 @@ public class MainUI extends VBox {
         Button browseButton = new Button("Browse Files");
         browseButton.setStyle("-fx-background-color: #4f46e5; -fx-text-fill: white;");
 
-        this.getChildren().addAll(instructionLabel, browseButton);
+        reportArea.setEditable(false);
+        reportArea.setPrefHeight(300);
+        reportArea.setPromptText("Analysis report will appear here...");
+        reportArea.setStyle("-fx-font-family: 'Monospaced'; -fx-font-size: 12px;");
+
+        this.getChildren().addAll(instructionLabel, browseButton, reportArea);
 
         this.setOnDragOver(event -> {
             if (event.getDragboard().hasFiles()) {
@@ -63,6 +70,8 @@ public class MainUI extends VBox {
     }
 
     private void processFile(File file) {
+        reportArea.clear();
+
         try {
             EpubParser parser = new EpubParser();
             String cleanText = parser.extractText(file.getAbsolutePath());
@@ -109,25 +118,26 @@ public class MainUI extends VBox {
             int uniqueWords = results.size();
             int totalWords = results.values().stream().mapToInt(Integer::intValue).sum();
 
+            Platform.runLater(() -> {
+                appendReport("--- PARSER REPORT ---");
+                appendReport("Total words extracted (approx): " + cleanText.split("\\s+").length);
+                for (int i = 0; i < chunks.size(); i++) {
+                    appendReport("Chunk " + (i + 1) + " length: " + chunks.get(i).length());
+                }
 
+                appendReport("\n--- DISPATCH REPORT ---");
+                appendReport("Tasks submitted: " + futures.size());
 
+                appendReport("\n--- PARALLEL REPORT ---");
+                appendReport("Total Unique Words: " + results.size());
+                appendReport("Total Number of Words: " + results.values().stream().mapToInt(Integer::intValue).sum());
+                appendReport("Total Time Elapsed: " + parallelDuration + " ms");
 
-            System.out.println("--- PARSER REPORT ---");
-            System.out.println("Total words extracted (approx): " + cleanText.split("\\s+").length);
-            for (int i = 0; i < chunks.size(); i++) {
-                System.out.println("Chunk " + (i + 1) + " length: " + chunks.get(i).length());
-            }
-
-            System.out.println("--- DISPATCH REPORT ---");
-            System.out.println("Tasks submitted: " + futures.size());
-            System.out.println("--- PARALLEL REPORT ---");
-            System.out.println("Total Unique Words: " + uniqueWords);
-            System.out.println("Total Number of Words: " + totalWords);
-            System.out.println("Total Time Elapsed (milliseconds): " + parallelDuration);
-            System.out.println("--- SEQUENTIAL REPORT ---");
-            System.out.println("Total Unique Words: " + seqUniqueWords);
-            System.out.println("Total Number of Words: " + seqTotalWords);
-            System.out.println("Total Time Elapsed (milliseconds): " + sequentialDuration+"\n");
+                appendReport("\n--- SEQUENTIAL REPORT ---");
+                appendReport("Total Unique Words: " + seqUniqueWords);
+                appendReport("Total Number of Words: " + seqTotalWords);
+                appendReport("Total Time Elapsed: " + sequentialDuration + " ms");
+            });
 
             
 
@@ -135,5 +145,9 @@ public class MainUI extends VBox {
             System.err.println("Error: " + e.getMessage());
             e.printStackTrace();
         }
+    }
+
+    private void appendReport(String text) {
+        reportArea.appendText(text + "\n");
     }
 }

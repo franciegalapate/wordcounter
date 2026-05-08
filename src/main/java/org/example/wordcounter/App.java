@@ -8,7 +8,7 @@ public class App extends Application {
     @Override
     public void start(Stage primaryStage) {
         MainUI root = new MainUI(primaryStage);
-        Scene scene = new Scene(root, 600, 450);
+        Scene scene = new Scene(root, 600, 600);
 
         primaryStage.setTitle("EPUB Word Counter");
         primaryStage.setScene(scene);
