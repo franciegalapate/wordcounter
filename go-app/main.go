@@ -1,15 +1,16 @@
 package main
 
 import (
+	"go-app/gui"
+
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
-	"go-app/gui"
 )
 
 func main() {
 	// Initialize the Fyne app
-	myApp := app.New()
-	
+	myApp := app.NewWithID("com.wordcounter.app")
+
 	// Create the main window
 	myWindow := myApp.NewWindow("Parallel Word Counter")
 
